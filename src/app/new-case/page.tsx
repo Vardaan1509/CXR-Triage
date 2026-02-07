@@ -67,6 +67,7 @@ function TriStateSelector({
 export default function NewCasePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [patientCardFile, setPatientCardFile] = useState<File | null>(null);
@@ -105,13 +106,55 @@ export default function NewCasePage() {
   const [smoker, setSmoker] = useState(false);
   const [immunocompromised, setImmunocompromised] = useState(false);
 
-  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+  function applyOcrData(data: any) {
+    if (data.name) setBasic((prev) => ({ ...prev, name: data.name }));
+    if (data.age) setBasic((prev) => ({ ...prev, age: data.age.toString() }));
+    if (data.sex) setBasic((prev) => ({ ...prev, sex: data.sex }));
+    if (data.chiefComplaint)
+      setBasic((prev) => ({ ...prev, chiefComplaint: data.chiefComplaint }));
+
+    if (data.vitals) {
+      setVitals((prev) => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          if (data.vitals[key]?.value) {
+            updated[key] = {
+              value: data.vitals[key].value,
+              individualBaseline: data.vitals[key].individualBaseline || false,
+            };
+          }
+        }
+        return updated;
+      });
+    }
+
+    if (data.symptoms) {
+      setSymptoms((prev) => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          if (data.symptoms[key]) {
+            updated[key] = data.symptoms[key];
+          }
+        }
+        return updated;
+      });
+    }
+
+    if (data.examFindings) {
+      setExamFindings((prev) => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          if (data.examFindings[key]) {
+            updated[key] = data.examFindings[key];
+          }
+        }
+        return updated;
+      });
+    }
+
+    if (data.smoker === true || data.smoker === "true") setSmoker(true);
+    if (data.immunocompromised === true || data.immunocompromised === "true")
+      setImmunocompromised(true);
   }
 
   async function handlePatientCard(e: React.ChangeEvent<HTMLInputElement>) {
@@ -119,26 +162,50 @@ export default function NewCasePage() {
     if (!file) return;
     setPatientCardFile(file);
 
-    if (file.name.endsWith(".json")) {
+    const isJSON = file.name.endsWith(".json");
+    const isImage = file.type.startsWith("image/");
+    const isPDF = file.type === "application/pdf";
+
+    if (isJSON) {
       const text = await file.text();
       try {
         const data = JSON.parse(text);
-        if (data.name) setBasic((prev) => ({ ...prev, name: data.name }));
-        if (data.age) setBasic((prev) => ({ ...prev, age: data.age.toString() }));
-        if (data.sex) setBasic((prev) => ({ ...prev, sex: data.sex }));
-        if (data.chiefComplaint)
-          setBasic((prev) => ({ ...prev, chiefComplaint: data.chiefComplaint }));
-        if (data.vitals) setVitals((prev) => ({ ...prev, ...data.vitals }));
-        if (data.symptoms) setSymptoms((prev) => ({ ...prev, ...data.symptoms }));
-        if (data.examFindings)
-          setExamFindings((prev) => ({ ...prev, ...data.examFindings }));
-        if (data.smoker !== undefined) setSmoker(data.smoker);
-        if (data.immunocompromised !== undefined)
-          setImmunocompromised(data.immunocompromised);
+        applyOcrData(data);
       } catch {
         alert("Invalid JSON patient card");
       }
+    } else if (isImage || isPDF) {
+      setOcrLoading(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/ocr", {
+          method: "POST",
+          body: formData,
+        });
+        const result = await res.json();
+        if (result.error) {
+          alert("OCR failed: " + result.error);
+        } else {
+          applyOcrData(result.data);
+        }
+      } catch {
+        alert("Failed to process patient card");
+      } finally {
+        setOcrLoading(false);
+      }
+    } else {
+      alert("Unsupported file type. Please upload a JSON, image, or PDF.");
     }
+  }
+
+  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   }
 
   async function handleSubmit() {
@@ -203,15 +270,22 @@ export default function NewCasePage() {
             Patient Card (Optional)
           </h2>
           <p className="text-sm text-gray-500 mb-3">
-            Upload a JSON patient card to autofill the form below
+            Upload a patient card to autofill the form — supports JSON, images,
+            and PDFs
           </p>
           <input
             type="file"
-            accept=".json"
+            accept=".json,image/png,image/jpeg,image/jpg,application/pdf"
             onChange={handlePatientCard}
+            disabled={ocrLoading}
             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
-          {patientCardFile && (
+          {ocrLoading && (
+            <p className="text-sm text-blue-600 mt-2">
+              Extracting patient data from file...
+            </p>
+          )}
+          {patientCardFile && !ocrLoading && (
             <p className="text-sm text-green-600 mt-2">
               ✓ Loaded: {patientCardFile.name}
             </p>
@@ -277,7 +351,10 @@ export default function NewCasePage() {
             <textarea
               value={basic.chiefComplaint}
               onChange={(e) =>
-                setBasic((prev) => ({ ...prev, chiefComplaint: e.target.value }))
+                setBasic((prev) => ({
+                  ...prev,
+                  chiefComplaint: e.target.value,
+                }))
               }
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
               rows={2}
@@ -291,7 +368,10 @@ export default function NewCasePage() {
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Vitals</h2>
           <div className="space-y-4">
             {VITAL_FIELDS.map(({ key, label }) => (
-              <div key={key} className="flex items-center justify-between gap-4">
+              <div
+                key={key}
+                className="flex items-center justify-between gap-4"
+              >
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-700">{label}</p>
                 </div>
@@ -333,7 +413,10 @@ export default function NewCasePage() {
           </h2>
           <div className="space-y-4">
             {SYMPTOM_FIELDS.map(({ key, label }) => (
-              <div key={key} className="flex items-center justify-between gap-4">
+              <div
+                key={key}
+                className="flex items-center justify-between gap-4"
+              >
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-700">{label}</p>
                 </div>
@@ -356,7 +439,10 @@ export default function NewCasePage() {
           </h2>
           <div className="space-y-4">
             {EXAM_FIELDS.map(({ key, label }) => (
-              <div key={key} className="flex items-center justify-between gap-4">
+              <div
+                key={key}
+                className="flex items-center justify-between gap-4"
+              >
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-700">{label}</p>
                 </div>
