@@ -4,7 +4,7 @@ An AI-powered chest X-ray triage tool that helps emergency departments prioritiz
 
 ## The Problem
 
-In busy ERs, chest X-rays pile up. Radiologists are overwhelmed, and critical findings like pneumothorax can sit unread for hours. Delayed reads cost lives — especially in under-resourced hospitals where specialist coverage is thin.
+In busy ERs, chest X-rays pile up. Radiologists are overwhelmed, and critical findings like pneumothorax can sit unread for hours. Delayed reads cost lives, especially in under-resourced hospitals where specialist coverage is thin.
 
 ## Our Solution
 
