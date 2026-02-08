@@ -3,6 +3,14 @@ export type Vital = {
   individualBaseline: boolean;
 };
 
+export type Resolution =
+  | "no_finding"
+  | "pneumonia"
+  | "nodule"
+  | "pneumothorax"
+  | "other"
+  | null;
+
 export type Case = {
   id: string;
   patient: {
@@ -35,6 +43,7 @@ export type Case = {
     immunocompromised: boolean;
   };
   imageFilename: string;
+  imageData: string | null;
   predictions: {
     pneumothorax: number;
     pneumonia: number;
@@ -50,10 +59,21 @@ export type Case = {
     };
   } | null;
   report: string | null;
+  resolution: Resolution;
+  resolutionNotes: string | null;
+  resolvedAt: string | null;
+  similarCaseId: string | null;
+  similarityScore: number | null;
   createdAt: string;
 };
 
-const cases = new Map<string, Case>();
+// Attach to globalThis so the store survives Turbopack module isolation
+// and hot reloads — without this, each API route gets its own empty Map.
+const globalForStore = globalThis as unknown as { __cxrCases: Map<string, Case> };
+if (!globalForStore.__cxrCases) {
+  globalForStore.__cxrCases = new Map<string, Case>();
+}
+const cases = globalForStore.__cxrCases;
 
 export function saveCase(c: Case) {
   cases.set(c.id, c);
@@ -63,8 +83,20 @@ export function getCase(id: string): Case | undefined {
   return cases.get(id);
 }
 
+export function updateCase(id: string, updates: Partial<Case>): Case | undefined {
+  const existing = cases.get(id);
+  if (!existing) return undefined;
+  const updated = { ...existing, ...updates };
+  cases.set(id, updated);
+  return updated;
+}
+
 export function getAllCases(): Case[] {
   return Array.from(cases.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+export function getResolvedCases(): Case[] {
+  return Array.from(cases.values()).filter((c) => c.resolution !== null);
 }
