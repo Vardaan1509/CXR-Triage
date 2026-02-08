@@ -3,6 +3,14 @@ export type Vital = {
   individualBaseline: boolean;
 };
 
+export type Resolution =
+  | "no_finding"
+  | "pneumonia"
+  | "nodule"
+  | "pneumothorax"
+  | "other"
+  | null;
+
 export type Case = {
   id: string;
   patient: {
@@ -35,6 +43,7 @@ export type Case = {
     immunocompromised: boolean;
   };
   imageFilename: string;
+  imageData: string | null;
   predictions: {
     pneumothorax: number;
     pneumonia: number;
@@ -50,17 +59,28 @@ export type Case = {
     };
   } | null;
   report: string | null;
+  resolution: Resolution;
+  resolutionNotes: string | null;
+  resolvedAt: string | null;
+  similarCaseId: string | null;
+  similarityScore: number | null;
   createdAt: string;
 };
 
 import { supabase } from "./supabase";
 
-const inMemory = new Map<string, Case>();
+// Attach to globalThis so the store survives Turbopack module isolation
+// and hot reloads — without this, each API route gets its own empty Map.
+const globalForStore = globalThis as unknown as { __cxrCases: Map<string, Case> };
+if (!globalForStore.__cxrCases) {
+  globalForStore.__cxrCases = new Map<string, Case>();
+}
+const cases = globalForStore.__cxrCases;
 
 export async function saveCase(c: Case, doctorId?: string | null) {
   // If Supabase not configured, save to in-memory map for dev
   if (!process.env.SUPABASE_URL) {
-    inMemory.set(c.id, c);
+    cases.set(c.id, c);
     return;
   }
 
@@ -75,7 +95,7 @@ export async function saveCase(c: Case, doctorId?: string | null) {
 
 export async function getCase(id: string): Promise<Case | undefined> {
   if (!process.env.SUPABASE_URL) {
-    return inMemory.get(id);
+    return cases.get(id);
   }
 
   const { data, error } = await supabase.from("cases").select("data").eq("id", id).limit(1).single();
@@ -85,7 +105,7 @@ export async function getCase(id: string): Promise<Case | undefined> {
 
 export async function getAllCases(doctorId?: string | null): Promise<Case[]> {
   if (!process.env.SUPABASE_URL) {
-    return Array.from(inMemory.values()).sort(
+    return Array.from(cases.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
@@ -98,4 +118,30 @@ export async function getAllCases(doctorId?: string | null): Promise<Case[]> {
   const { data, error } = await query;
   if (error || !data) return [];
   return data.map((r: any) => r.data as Case);
+}
+
+export function updateCase(
+  id: string,
+  updates: {
+    resolution?: Resolution;
+    resolutionNotes?: string | null;
+    resolvedAt?: string | null;
+  }
+): Case | undefined {
+  const existing = cases.get(id);
+  if (!existing) return undefined;
+
+  const updated = {
+    ...existing,
+    resolution: updates.resolution ?? existing.resolution,
+    resolutionNotes: updates.resolutionNotes ?? existing.resolutionNotes,
+    resolvedAt: updates.resolvedAt ?? existing.resolvedAt,
+  } as Case;
+
+  cases.set(id, updated);
+  return updated;
+}
+
+export function getResolvedCases(): Case[] {
+  return Array.from(cases.values()).filter((c) => c.resolution !== null);
 }

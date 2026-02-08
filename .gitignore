@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# model weights & python venv
+*.pth
+model/venv/
+model/__pycache__/
+__pycache__/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

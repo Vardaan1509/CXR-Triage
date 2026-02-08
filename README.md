@@ -1,37 +1,133 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CXR Triage
+
+An AI-powered chest X-ray triage tool that helps emergency departments prioritize patients faster. Upload an X-ray, get instant risk flags, and let clinicians focus where it matters most.
+
+## The Problem
+
+In busy ERs, chest X-rays pile up. Radiologists are overwhelmed, and critical findings like pneumothorax can sit unread for hours. Delayed reads cost lives, especially in under-resourced hospitals where specialist coverage is thin.
+
+## Our Solution
+
+CXR Triage puts AI to work at the point of care:
+
+1. A clinician uploads a chest X-ray alongside patient info
+2. A deep learning model (ResNet50) instantly screens for **pneumothorax, pneumonia, and lung nodules**
+3. The system flags the case as **URGENT**, **REVIEW**, or **ROUTINE** — so the sickest patients get seen first
+4. An AI-generated report summarizes the findings in clinical language, ready for physician review
+5. Over time, resolved cases build a knowledge base — new cases are matched against past ones for reference
+
+This isn't replacing radiologists. It's giving them a head start.
+
+## Why This Matters
+
+- **Time to treatment** — flagging a tension pneumothorax in seconds vs. waiting hours in a queue can be the difference between life and death
+- **Resource equity** — rural and understaffed hospitals don't always have overnight radiology coverage. AI triage fills that gap
+- **Clinician trust** — every prediction comes with a full clinical report explaining the reasoning, not just a number. Clinicians can verify, override, and record the real outcome
+- **Learning system** — when clinicians resolve cases, the system remembers. Similar future cases surface past outcomes, creating institutional knowledge that doesn't walk out the door at shift change
+
+## How It Works
+
+```
+Patient arrives → X-ray uploaded → Model scores risk → Case triaged
+                                                      ↓
+                              Clinician reviews → Resolves case → Knowledge base grows
+                                                                        ↓
+                                                        Future similar cases get linked
+```
+
+**The AI pipeline:**
+- **Image analysis**: ResNet50 classifies the X-ray for three conditions, outputting probability scores
+- **Triage logic**: Probabilities are mapped to urgency flags (>=60% urgent, >=30% review, <30% routine)
+- **Report generation**: Gemini synthesizes predictions + patient context into a structured clinical report
+- **OCR intake**: Patient cards (images, PDFs) are parsed automatically to reduce manual data entry
+- **Case matching**: A weighted similarity algorithm compares new cases against resolved ones, with imaging predictions weighted highest (54% of the score) because the X-ray is the most diagnostically reliable signal
+
+## Features
+
+- Upload chest X-rays and get instant AI predictions
+- Three-level triage: URGENT / REVIEW / ROUTINE
+- Full patient intake — vitals, symptoms, exam findings, risk factors
+- OCR-powered patient card scanning (images, PDFs, JSON)
+- AI-generated clinical reports (formatted markdown)
+- Case resolution with diagnosis and clinician notes
+- Similar resolved case matching for clinical reference
+- Export case bundles as JSON
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
+| ML Model | PyTorch ResNet50, served via FastAPI |
+| AI/LLM | Google Gemini 2.0 Flash (via OpenRouter) |
+| OCR | Gemini vision for patient card extraction |
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- Python 3.9+
+- A trained `best_model.pth` file
+- An [OpenRouter](https://openrouter.ai/) API key
+
+### Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install frontend
+cd cxr-triage
+npm install
+
+# Set up model server
+cd model
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Place your model weights at `model/best_model.pth`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Create `.env.local` in the project root:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+OPENROUTER_API_KEY=your_key_here
+```
 
-## Learn More
+### Run
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Terminal 1 — model server
+cd model && source venv/bin/activate && uvicorn serve:app --port 8000
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Terminal 2 — web app
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open [http://localhost:3000](http://localhost:3000).
 
-## Deploy on Vercel
+## Project Structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+cxr-triage/
+├── model/
+│   ├── serve.py              # FastAPI model server (ResNet50 inference)
+│   └── requirements.txt
+├── src/
+│   ├── app/
+│   │   ├── page.tsx           # Dashboard
+│   │   ├── new-case/          # Patient intake + X-ray upload
+│   │   ├── case/[id]/         # Case detail + resolve + report
+│   │   └── api/
+│   │       ├── infer/         # Proxy to model server
+│   │       ├── cases/         # Case CRUD
+│   │       ├── ocr/           # Patient card OCR
+│   │       └── report/        # AI report generation
+│   └── lib/
+│       ├── store.ts           # In-memory case store
+│       ├── triage.ts          # Triage computation
+│       └── similarity.ts      # Case similarity scoring
+└── .env.local
+```
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
@@ -87,3 +183,15 @@ npm run dev
 Notes:
 - Keep your service role key secret; use it only on server-side.
  - If you don't configure Supabase, the app will continue using an in-memory store (no persistence).
+=======
+## Limitations
+
+- Storage is in-memory (prototype — cases don't persist across restarts)
+- Model validation accuracy is ~55% (proof of concept, not clinical-grade)
+- Standard image formats only (no DICOM)
+- Requires physician review — this assists, it does not diagnose
+
+## Team
+
+Built at the CXC Hackathon.
+>>>>>>> d67e274ce22dd12c94364d8edd84e2953e3f4436

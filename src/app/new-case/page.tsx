@@ -213,13 +213,21 @@ export default function NewCasePage() {
     }
   }
 
-  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    const base64 = await fileToBase64(file);
+    setImagePreview(base64);
   }
 
   async function handleSubmit() {
@@ -239,7 +247,13 @@ export default function NewCasePage() {
         method: "POST",
         body: imageFile,
       });
-      const { predictions } = await inferRes.json();
+      const inferData = await inferRes.json();
+      if (!inferRes.ok || inferData.error) {
+        alert("Model inference failed: " + (inferData.error || "Unknown error"));
+        setLoading(false);
+        return;
+      }
+      const { predictions } = inferData;
 
       // get current session to attach access token if signed in
       const {
@@ -267,8 +281,15 @@ export default function NewCasePage() {
           },
           predictions,
           imageFilename: imageFile.name,
+          imageData: imagePreview || (await fileToBase64(imageFile)),
         }),
       });
+      if (!caseRes.ok) {
+        const errData = await caseRes.json().catch(() => ({}));
+        alert("Failed to save case: " + (errData.error || caseRes.statusText));
+        setLoading(false);
+        return;
+      }
       const { id } = await caseRes.json();
 
       router.push(`/case/${id}`);

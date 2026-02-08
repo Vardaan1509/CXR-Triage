@@ -3,11 +3,21 @@
 import { useState, useEffect, use } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Markdown from "react-markdown";
 
 type Vital = {
   value: "low" | "normal" | "high" | null;
   individualBaseline: boolean;
 };
+
+type Resolution =
+  | "no_finding"
+  | "pneumonia"
+  | "nodule"
+  | "pneumothorax"
+  | "other"
+  | null;
 
 type Case = {
   id: string;
@@ -40,6 +50,7 @@ type Case = {
     smoker: boolean;
     immunocompromised: boolean;
   };
+  imageData: string | null;
   predictions: {
     pneumothorax: number;
     pneumonia: number;
@@ -54,6 +65,11 @@ type Case = {
       nodule: "low" | "review" | "urgent";
     };
   };
+  resolution: Resolution;
+  resolutionNotes: string | null;
+  resolvedAt: string | null;
+  similarCaseId: string | null;
+  similarityScore: number | null;
   report: string | null;
   createdAt: string;
 };
@@ -141,11 +157,24 @@ function CollapsibleSection({
   );
 }
 
+const RESOLUTION_OPTIONS = [
+  { value: "no_finding", label: "No Finding" },
+  { value: "pneumonia", label: "Pneumonia" },
+  { value: "nodule", label: "Nodule" },
+  { value: "pneumothorax", label: "Pneumothorax" },
+  { value: "other", label: "Other" },
+];
+
 export default function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [report, setReport] = useState<string | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [selectedResolution, setSelectedResolution] = useState<string | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [similarCase, setSimilarCase] = useState<Case | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   useEffect(() => {
@@ -199,7 +228,55 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
         setLoadingReport(false);
       }
     })();
-  }, [caseData]);
+
+    // Fetch similar case if one exists
+    if (caseData?.similarCaseId) {
+      (async () => {
+        try {
+          const simRes = await fetch(`/api/cases/${caseData.similarCaseId}`);
+          if (simRes.ok) {
+            const simData = await simRes.json();
+            setSimilarCase(simData.caseData);
+          }
+        } catch {
+          // ignore — similar case is optional
+        }
+      })();
+    }
+  }, [caseData, id]);
+
+  function openConfirm(resolution: string) {
+    setSelectedResolution(resolution);
+    setShowConfirm(true);
+  }
+
+  async function confirmResolve() {
+    if (!selectedResolution) return;
+    setResolving(true);
+    setShowConfirm(false);
+    try {
+      const res = await fetch(`/api/cases/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resolution: selectedResolution,
+          notes: resolutionNotes.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCaseData(data.caseData);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert("Failed to resolve case: " + (errData.error || res.statusText));
+      }
+    } catch {
+      alert("Failed to resolve case: network error");
+    } finally {
+      setResolving(false);
+      setSelectedResolution(null);
+    }
+  }
 
   if (error) {
     return (
@@ -282,6 +359,20 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             </p>
           </div>
         </div>
+
+        {/* Chest X-Ray Image */}
+        {caseData.imageData && (
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-3">
+              Chest X-Ray
+            </h2>
+            <img
+              src={caseData.imageData}
+              alt="Chest X-Ray"
+              className="max-w-full max-h-96 rounded border mx-auto"
+            />
+          </div>
+        )}
 
         {/* Collapsible Clinical Details */}
         {filledVitals.length > 0 && (
@@ -407,11 +498,8 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             </p>
           </div>
           <p className="text-xs text-gray-400 mt-4">
-            Model version: MVP-mock •{" "}
+            Model: ResNet50 CXR •{" "}
             {new Date(caseData.createdAt).toLocaleString()}
-          </p>
-          <p className="text-xs text-gray-400">
-            Explainability (heatmaps) not available in MVP
           </p>
         </div>
 
@@ -421,13 +509,137 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             AI-Generated Report
           </h2>
           {report ? (
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono bg-gray-50 p-4 rounded">
-              {report}
-            </pre>
+            <div className="prose prose-sm max-w-none text-gray-700 bg-gray-50 p-4 rounded">
+              <Markdown>{report}</Markdown>
+            </div>
           ) : loadingReport ? (
             <p className="text-sm text-gray-500">Generating report...</p>
           ) : null}
         </div>
+
+        {/* Similar Resolved Case */}
+        {similarCase && caseData.similarityScore && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg shadow p-6 mb-6">
+            <h2 className="text-lg font-semibold text-indigo-800 mb-2">
+              Similar Resolved Case
+            </h2>
+            <div className="bg-white rounded-lg p-4 border border-indigo-100">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {similarCase.patient.name}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {similarCase.patient.age}y {similarCase.patient.sex}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-semibold">
+                    Resolved: {similarCase.resolution?.replace("_", " ").toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <Link
+                href={`/case/${similarCase.id}`}
+                className="text-sm text-indigo-600 font-semibold hover:underline"
+              >
+                View full case →
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Resolve Case */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">
+            Resolve Case
+          </h2>
+          {caseData.resolution ? (
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="inline-block bg-purple-100 text-purple-800 px-4 py-2 rounded-full font-semibold">
+                  {caseData.resolution.replace("_", " ").toUpperCase()}
+                </span>
+                <span className="text-sm text-gray-500">
+                  Resolved {caseData.resolvedAt ? new Date(caseData.resolvedAt).toLocaleString() : ""}
+                </span>
+              </div>
+              {caseData.resolutionNotes && (
+                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded mt-2">
+                  <span className="font-medium text-gray-700">Notes: </span>
+                  {caseData.resolutionNotes}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-gray-500 mb-3">
+                Record the final clinical diagnosis for this case:
+              </p>
+              <textarea
+                value={resolutionNotes}
+                onChange={(e) => setResolutionNotes(e.target.value)}
+                placeholder="Optional notes (e.g. clinical reasoning, follow-up needed...)"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-3"
+                rows={2}
+              />
+              <div className="flex flex-wrap gap-2">
+                {RESOLUTION_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => openConfirm(opt.value)}
+                    disabled={resolving}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-purple-50 hover:border-purple-400 hover:text-purple-700 transition-colors disabled:opacity-50"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Confirmation Modal */}
+        {showConfirm && selectedResolution && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Confirm Resolution
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to resolve this case as{" "}
+                <span className="font-semibold text-purple-700">
+                  {RESOLUTION_OPTIONS.find((o) => o.value === selectedResolution)?.label}
+                </span>
+                ?
+              </p>
+              {resolutionNotes.trim() && (
+                <div className="bg-gray-50 rounded p-3 mb-4">
+                  <p className="text-xs text-gray-500 mb-1">Notes:</p>
+                  <p className="text-sm text-gray-700">{resolutionNotes}</p>
+                </div>
+              )}
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowConfirm(false);
+                    setSelectedResolution(null);
+                  }}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmResolve}
+                  disabled={resolving}
+                  className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {resolving ? "Resolving..." : "Confirm"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Export */}
         <button

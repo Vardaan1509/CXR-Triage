@@ -14,6 +14,7 @@ type CaseSummary = {
   triage: {
     level: "URGENT" | "REVIEW" | "ROUTINE";
   };
+  resolution: string | null;
   createdAt: string;
 };
 
@@ -77,6 +78,11 @@ export default function HomePage() {
                   <div>
                     <p className="font-semibold text-gray-900">
                       {c.patient.name}
+                      {c.resolution && (
+                        <span className="ml-2 inline-block bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-medium">
+                          Resolved
+                        </span>
+                      )}
                     </p>
                     <p className="text-sm text-gray-500">
                       {c.patient.age}y {c.patient.sex} •{" "}
