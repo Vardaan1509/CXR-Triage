@@ -86,6 +86,12 @@ const FLAG_COLORS = {
   low: "text-green-600",
 };
 
+const BAR_COLORS = {
+  urgent: "bg-red-500",
+  review: "bg-yellow-500",
+  low: "bg-green-500",
+};
+
 const VITAL_LABELS: Record<string, string> = {
   spo2: "SpO₂",
   bp: "Blood Pressure",
@@ -218,6 +224,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             patient: caseData.patient,
             predictions: caseData.predictions,
             triage: caseData.triage,
+            caseId: caseData.id,
           }),
         });
         const reportData = await res.json();
@@ -308,7 +315,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-3xl mx-auto">
         {/* Back Button */}
-        <a
+        <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4 transition-colors"
         >
@@ -326,7 +333,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             />
           </svg>
           Back to all cases
-        </a>
+        </Link>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -462,7 +469,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3">
                 <div
-                  className="bg-blue-500 h-3 rounded-full"
+                  className={`${BAR_COLORS[caseData.triage.flags[condition as keyof typeof caseData.triage.flags]]} h-3 rounded-full transition-all`}
                   style={{ width: `${probability * 100}%` }}
                 />
               </div>
@@ -513,7 +520,15 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
               <Markdown>{report}</Markdown>
             </div>
           ) : loadingReport ? (
-            <p className="text-sm text-gray-500">Generating report...</p>
+            <div className="space-y-3 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-full"></div>
+              <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+              <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+              <div className="h-4 bg-gray-200 rounded w-full"></div>
+              <div className="h-4 bg-gray-200 rounded w-4/5"></div>
+              <p className="text-xs text-gray-400 pt-2">Generating report with Gemini...</p>
+            </div>
           ) : null}
         </div>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { addAuditEntry } from "@/lib/auditLog";
 
 const client = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
@@ -86,7 +87,7 @@ function buildPatientSection(patient: any): string {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { patient, predictions, triage } = body;
+  const { patient, predictions, triage, caseId } = body;
 
   const patientSection = buildPatientSection(patient);
 
@@ -127,6 +128,11 @@ IMPORTANT CONSTRAINTS:
 
     const report =
       completion.choices[0]?.message?.content || "Report generation failed.";
+
+    if (caseId) {
+      addAuditEntry("REPORT_GENERATED", caseId, "system", "Model: Gemini 2.0 Flash");
+    }
+
     return NextResponse.json({ report });
   } catch (error) {
     console.error("Gemini API error:", error);

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { saveCase, getAllCases, type Case } from "@/lib/store";
+import { saveCase, getAllCases, nextCaseId, type Case } from "@/lib/store";
 import { computeTriage } from "@/lib/triage";
-import { getDoctorIdFromReq } from "@/lib/auth";
+import { getDoctorIdFromReq, getDoctorEmailFromReq } from "@/lib/auth";
 import { findMostSimilarCase } from "@/lib/similarity";
+import { addAuditEntry } from "@/lib/auditLog";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
   const effectiveDoctorId = tokenDoctorId;
 
   const triage = computeTriage(predictions);
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const id = nextCaseId();
 
   const caseObj: Case = {
     id,
@@ -42,6 +43,10 @@ export async function POST(req: Request) {
   }
 
   await saveCase(caseObj, effectiveDoctorId);
+
+  const email = await getDoctorEmailFromReq(req);
+  addAuditEntry("CASE_CREATED", id, email, `Patient: ${patient.name}, Triage: ${triage.level}`);
+
   return NextResponse.json({ id });
 }
 

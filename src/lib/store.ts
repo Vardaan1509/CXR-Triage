@@ -71,11 +71,23 @@ import { supabase } from "./supabase";
 
 // Attach to globalThis so the store survives Turbopack module isolation
 // and hot reloads — without this, each API route gets its own empty Map.
-const globalForStore = globalThis as unknown as { __cxrCases: Map<string, Case> };
+const globalForStore = globalThis as unknown as {
+  __cxrCases: Map<string, Case>;
+  __cxrCaseCounter: number;
+};
 if (!globalForStore.__cxrCases) {
   globalForStore.__cxrCases = new Map<string, Case>();
 }
+if (!globalForStore.__cxrCaseCounter) {
+  globalForStore.__cxrCaseCounter = 0;
+}
 const cases = globalForStore.__cxrCases;
+
+/** Generate a human-readable case ID like CXR-001, CXR-002, etc. */
+export function nextCaseId(): string {
+  globalForStore.__cxrCaseCounter += 1;
+  return `CXR-${String(globalForStore.__cxrCaseCounter).padStart(3, "0")}`;
+}
 
 export async function saveCase(c: Case, doctorId?: string | null) {
   // If Supabase not configured, save to in-memory map for dev

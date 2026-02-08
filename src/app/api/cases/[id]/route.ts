@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCase, updateCase } from "@/lib/store";
-import { getDoctorIdFromReq } from "@/lib/auth";
+import { getDoctorIdFromReq, getDoctorEmailFromReq } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { addAuditEntry } from "@/lib/auditLog";
 
 export async function GET(
   req: Request,
@@ -24,6 +25,7 @@ export async function GET(
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
       }
 
+      addAuditEntry("CASE_VIEWED", id, requesterDoctorId || "unknown");
       return NextResponse.json({ caseData: data.data });
     } catch (err) {
       console.error("case fetch error", err);
@@ -38,6 +40,8 @@ export async function GET(
   }
 
   // no auth in dev fallback
+  const email = await getDoctorEmailFromReq(req);
+  addAuditEntry("CASE_VIEWED", id, email);
   return NextResponse.json({ caseData });
 }
 
@@ -63,6 +67,9 @@ export async function PATCH(
   if (!updated) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }
+
+  const email = await getDoctorEmailFromReq(req);
+  addAuditEntry("CASE_RESOLVED", id, email, `Diagnosis: ${resolution}${notes ? `, Notes: ${notes}` : ""}`);
 
   return NextResponse.json({ caseData: updated });
 }
