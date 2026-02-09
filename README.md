@@ -41,7 +41,7 @@ Patient arrives → X-ray uploaded → Model scores risk → Case triaged
 
 - **Image analysis**: A fine-tuned ResNet50 classifies the X-ray for three conditions, outputting probability scores
 - **Triage logic**: Probabilities are mapped to urgency flags (≥60% urgent, ≥30% review, <30% routine). The highest flag across all conditions determines the overall triage level
-- **Report generation**: Google Gemini 2.0 Flash synthesizes model predictions + patient context into a structured ER-style radiology report
+- **Report generation**: Google Gemini 2.5 Flash synthesizes model predictions + patient context into a structured ER-style radiology report
 - **OCR intake**: Patient cards (images, PDFs) are parsed automatically via Gemini vision to reduce manual data entry
 - **Case matching**: A clinically-weighted similarity algorithm compares new cases against resolved ones, with X-ray model predictions weighted highest (54% of the score) because the imaging is the most diagnostically reliable signal. A 60% similarity threshold is required for a match
 
