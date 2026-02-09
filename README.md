@@ -80,7 +80,7 @@ Patient arrives → X-ray uploaded → Model scores risk → Case triaged
 |-------|-----------|
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
 | ML Model | PyTorch ResNet50, served via FastAPI + Uvicorn |
-| AI / LLM | Google Gemini 2.0 Flash (via OpenRouter) |
+| AI / LLM | Google Gemini 2.5 Flash (via OpenRouter) |
 | OCR | Gemini vision for patient card extraction |
 | Auth & DB | Supabase (PostgreSQL, Row Level Security, Auth) |
 | Markdown | react-markdown for formatted clinical reports |
